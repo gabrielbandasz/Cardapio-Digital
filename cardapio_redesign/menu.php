@@ -6,6 +6,14 @@ $config = $pdo->query("SELECT * FROM config WHERE id=1")->fetch();
 $lojaAberta = (bool)$config['aberto'];
 $promoAtiva = (bool)($config['promo_ativa'] ?? 0) && (!$config['promo_fim'] || strtotime($config['promo_fim']) > time());
 $cor = $config['cor_primaria'] ?? '#e85d04';
+$slug = $_GET['slug'] ?? null;
+
+if ($slug) {
+    $stmt = $pdo->prepare("SELECT * FROM config WHERE slug = ? LIMIT 1");
+    $stmt->execute([$slug]);
+    $config = $stmt->fetch();
+    if (!$config) { http_response_code(404); die('Restaurante não encontrado.'); }
+}
 
 $categorias = $pdo->query("SELECT * FROM categorias ORDER BY nome")->fetchAll();
 $produtosRaw = $pdo->query("SELECT p.*, c.nome AS cat_nome FROM produtos p LEFT JOIN categorias c ON c.id=p.categoria_id WHERE p.disponivel=1 ORDER BY c.nome, p.nome")->fetchAll();
@@ -26,6 +34,7 @@ $zonas = (int)($config['frete_por_zona'] ?? 0) ? $pdo->query("SELECT * FROM zona
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title><?= h($config['nome_restaurante']) ?></title>
+<script>if(localStorage.getItem('darkMode')==='0')document.documentElement.setAttribute('data-theme','light');</script>  <!-- ← AQUI -->
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -78,8 +87,8 @@ a{color:inherit;text-decoration:none}
 .prod-emoji{width:100px;height:100px;display:flex;align-items:center;justify-content:center;font-size:40px;flex-shrink:0;background:var(--bg)}
 .prod-body{flex:1;padding:12px 12px 12px 0;display:flex;flex-direction:column;justify-content:space-between;min-width:0}
 .prod-badge{display:inline-block;background:linear-gradient(135deg,#ff4500,#ff8c00);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;margin-bottom:4px}
-.prod-nome{font-size:15px;font-weight:700;line-height:1.3}
-.prod-desc{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.prod-nome{font-size:15px;font-weight:700;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.6em}
+.prod-desc{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.8em}
 .prod-footer{display:flex;align-items:center;justify-content:space-between;margin-top:8px;gap:8px}
 .prod-preco{font-size:17px;font-weight:800;color:var(--p)}
 .prod-preco-old{font-size:12px;color:var(--muted);text-decoration:line-through;margin-right:4px}
@@ -90,6 +99,12 @@ a{color:inherit;text-decoration:none}
 /* CARRINHO FAB */
 .cart-fab{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--p);color:#fff;padding:14px 28px;border-radius:99px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 6px 24px rgba(0,0,0,.25);z-index:200;display:none;align-items:center;gap:8px;white-space:nowrap;border:none;transition:transform .15s,box-shadow .15s}
 .cart-fab:hover{transform:translateX(-50%) translateY(-2px);box-shadow:0 8px 32px rgba(0,0,0,.3)}
+
+/* SKELETON LOADING */
+.skeleton{background:linear-gradient(90deg,#2a2a2a 25%,#333 50%,#2a2a2a 75%);background-size:200% 100%;animation:shimmer 1.2s infinite;border-radius:8px}
+[data-theme=light] .skeleton{background:linear-gradient(90deg,#eee 25%,#ddd 50%,#eee 75%);background-size:200% 100%}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.skel-card{display:flex;gap:12px;padding:12px;margin-bottom:10px;background:var(--card);border-radius:14px;border:1px solid var(--border)}
 
 /* MODAL */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:300;display:flex;align-items:flex-end;justify-content:center}
@@ -147,7 +162,7 @@ a{color:inherit;text-decoration:none}
       </div>
     </div>
     <div class="hd-right">
-      <button class="icon-btn" id="darkToggle">🌙 Tema</button>
+      <button class="icon-btn" id="darkToggle" aria-label="Alternar tema">🌙 Tema</button>
       <button class="icon-btn" id="shareBtn">🔗 Compartilhar</button>
     </div>
   </div>
@@ -172,7 +187,19 @@ a{color:inherit;text-decoration:none}
 </div>
 
 <div class="main" id="boasVindasArea"></div>
-
+<div id="skeletons" class="main">
+  <?php for($i=0;$i<4;$i++): ?>
+  <div class="skel-card">
+    <div class="skeleton" style="width:100px;height:100px;flex-shrink:0"></div>
+    <div style="flex:1;display:flex;flex-direction:column;gap:8px;padding:4px 0">
+      <div class="skeleton" style="height:16px;width:60%"></div>
+      <div class="skeleton" style="height:12px;width:90%"></div>
+      <div class="skeleton" style="height:12px;width:75%"></div>
+      <div class="skeleton" style="height:18px;width:30%;margin-top:4px"></div>
+    </div>
+  </div>
+  <?php endfor; ?>
+</div>
 <div class="main" id="menuMain">
 
   <?php if (!empty($maisVendidos)): ?>
@@ -254,17 +281,17 @@ const LOJA = {
 // ── Dark mode ─────────────────────────────────────────────
 (function(){
   const root = document.documentElement;
-  if (localStorage.getItem('darkMode') === '1') root.setAttribute('data-theme','dark');
-  const btn = document.getElementById('darkToggle');
-  if (btn) {
-    btn.textContent = root.getAttribute('data-theme') === 'dark' ? '☀️ Tema' : '🌙 Tema';
-    btn.onclick = () => {
-      const d = root.getAttribute('data-theme') === 'dark';
-      root.setAttribute('data-theme', d ? 'light' : 'dark');
-      localStorage.setItem('darkMode', d ? '0' : '1');
-      btn.textContent = d ? '🌙 Tema' : '☀️ Tema';
-    };
-  }
+  const btn  = document.getElementById('darkToggle');
+  if (!btn) return;
+  const isDark = () => root.getAttribute('data-theme') !== 'light';
+  btn.setAttribute('aria-label','Alternar tema');
+  btn.textContent = isDark() ? '☀️ Tema' : '🌙 Tema';
+  btn.onclick = () => {
+    const dark = isDark();
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+    localStorage.setItem('darkMode', dark ? '0' : '1');
+    btn.textContent = dark ? '🌙 Tema' : '☀️ Tema';
+  };
 })();
 
 // ── Carrinho ──────────────────────────────────────────────
@@ -279,6 +306,10 @@ function updateCartBtn() {
   if (!fab) return;
   if (!qtd) { fab.style.display = 'none'; return; }
   fab.style.display = 'flex';
+  document.addEventListener('DOMContentLoaded', () => {
+  const sk = document.getElementById('skeletons');
+  if (sk) sk.style.display = 'none';
+});
   document.getElementById('cartCount').textContent = qtd;
   document.getElementById('cartTotal').textContent = fmt(c.reduce((s,i) => s + i.preco * i.quantidade, 0));
 }
@@ -397,8 +428,11 @@ document.getElementById('catsNav').addEventListener('click', e => {
   });
 });
 
+let _debounce;
 document.getElementById('searchInput').addEventListener('input', e => {
-  const q = e.target.value.toLowerCase();
+  clearTimeout(_debounce);
+  _debounce = setTimeout(() => {
+    const q = e.target.value.toLowerCase();
   document.querySelectorAll('.prod-card').forEach(c => {
     const txt = c.dataset.nome || '';
     c.style.display = !q || txt.includes(q) ? '' : 'none';
@@ -407,6 +441,7 @@ document.getElementById('searchInput').addEventListener('input', e => {
     const vis = [...s.querySelectorAll('.prod-card')].some(c => c.style.display !== 'none');
     s.style.display = vis ? '' : 'none';
   });
+  }, 250);
 });
 
 // ── Compartilhar ──────────────────────────────────────────
@@ -443,6 +478,5 @@ document.getElementById('shareBtn').onclick = () => {
 
 updateCartBtn();
 </script>
-<script>if(localStorage.getItem("darkMode")==="0")document.documentElement.setAttribute("data-theme","light");</script>
 </body>
 </html>

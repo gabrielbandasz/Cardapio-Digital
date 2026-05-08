@@ -1,7 +1,8 @@
 <?php
 header('Content-Type: application/json; charset=utf-8');
 require_once __DIR__ . '/../config/db.php';
-
+require_once __DIR__ . '/../includes/rate_limit.php';
+rate_limit('cupom', 10, 60);
 $body = json_decode(file_get_contents('php://input'), true);
 $codigo = strtoupper(trim($body['codigo'] ?? ''));
 $subtotal = (float)($body['subtotal'] ?? 0);

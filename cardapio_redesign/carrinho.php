@@ -21,7 +21,7 @@ $cor = h($config['cor_primaria'] ?? '#e85d04');
   <div class="header-inner">
     <a href="index.php" class="btn btn-outline" style="padding:8px 16px">← Cardápio</a>
     <h2>🛒 Meu Carrinho</h2>
-    <button class="btn-icon" id="darkToggle" title="Dark mode">🌙</button>
+    <button class="btn-icon" id="darkToggle" aria-label="Alternar tema">🌙 Tema</button>
   </div>
 </header>
 
@@ -186,6 +186,40 @@ const LOJA_CONFIG = {
 };
 </script>
 <script src="assets/js/cart.js"></script>
-<script>if(localStorage.getItem("darkMode")==="0")document.documentElement.setAttribute("data-theme","light");</script>
-</body>
-</html>
+<script>
+// ── Dark mode ─────────────────────────────────────────────
+(function(){
+  const root = document.documentElement;
+  const btn  = document.getElementById('darkToggle');
+  if (!btn) return;
+  const isDark = () => root.getAttribute('data-theme') !== 'light';
+  btn.setAttribute('aria-label','Alternar tema');
+  btn.textContent = isDark() ? '☀️ Tema' : '🌙 Tema';
+  btn.onclick = () => {
+    const dark = isDark();
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+    localStorage.setItem('darkMode', dark ? '0' : '1');
+    btn.textContent = dark ? '🌙 Tema' : '☀️ Tema';
+  };
+})();
+
+// Máscara e validação inline
+const waInput = document.getElementById('whatsappCliente');
+const nomeInput = document.getElementById('nomeCliente');
+if(waInput){
+  waInput.addEventListener('input', e => {
+    let v = e.target.value.replace(/\D/g,'').slice(0,11);
+    if(v.length>6) v='('+v.slice(0,2)+') '+v.slice(2,7)+'-'+v.slice(7);
+    else if(v.length>2) v='('+v.slice(0,2)+') '+v.slice(2);
+    e.target.value=v;
+  });
+  waInput.addEventListener('blur', e => {
+    e.target.style.borderColor = e.target.value.replace(/\D/g,'').length>=10 ? 'var(--success)' : 'var(--danger)';
+  });
+}
+if(nomeInput){
+  nomeInput.addEventListener('blur', e => {
+    e.target.style.borderColor = e.target.value.trim().length>=2 ? 'var(--success)' : 'var(--danger)';
+  });
+}
+</script>

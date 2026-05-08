@@ -101,4 +101,20 @@ $statsC = $pdo->query("SELECT COUNT(*) AS total, COALESCE(SUM(total_gasto),0) AS
   </div>
 </div>
 <script>if(localStorage.getItem("darkMode")==="0")document.documentElement.setAttribute("data-theme","light");</script>
+<script>
+(function(){
+  const root = document.documentElement;
+  const btn  = document.getElementById('darkToggle');
+  if (!btn) return;
+  const isDark = () => root.getAttribute('data-theme') !== 'light';
+  btn.setAttribute('aria-label','Alternar tema');
+  btn.textContent = isDark() ? '☀️ Tema' : '🌙 Tema';
+  btn.onclick = () => {
+    const dark = isDark();
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+    localStorage.setItem('darkMode', dark ? '0' : '1');
+    btn.textContent = dark ? '🌙 Tema' : '☀️ Tema';
+  };
+})();
+</script>
 </body></html>

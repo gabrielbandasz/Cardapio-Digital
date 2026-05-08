@@ -1,136 +1,380 @@
 <?php
 header('Content-Type: application/json; charset=utf-8');
+
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../includes/funcoes.php';
 
-$body = json_decode(file_get_contents('php://input'), true) ?? [];
-
-$nomeCli   = trim($body['nome'] ?? '');
-$waCliente = preg_replace('/\D/', '', $body['whatsapp'] ?? '');
-$itens      = $body['itens'] ?? [];
-$endereço  = trim($body['endereco'] ?? '');
-$obs       = trim($body['observacoes'] ?? '');
-$tipoEnt   = in_array($body['tipo_entrega'] ?? 'retirada', ['entrega','retirada']) ? $body['tipo_entrega'] : 'retirada';
-$pagamento = in_array($body['pagamento']??'',['dinheiro','pix','cartao']) ? $body['pagamento'] : 'dinheiro';
-$cupomCode = strtoupper(trim($body['cupom'] ?? ''));
-$bairro    = trim($body['bairro'] ?? '');
-
-if (empty($itens)) { echo json_encode(['ok'=>false,'erro'=>'Carrinho vazio']); exit; }
-
-$config = $pdo->query("SELECT * FROM config WHERE id=1")->fetch();
-
-// Verifica loja aberta
-if (!loja_aberta($config)) {
-    echo json_encode(['ok'=>false,'erro'=>'Loja fechada no momento.']); exit;
+function resposta($ok, $dados = [], $status = 200) {
+    http_response_code($status);
+    echo json_encode(array_merge(['ok' => $ok], $dados), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
 }
 
-// Calcular subtotal
-$subtotal = 0;
-foreach ($itens as &$item) {
-    $stmt = $pdo->prepare("SELECT * FROM produtos WHERE id=? AND disponivel=1");
-    $stmt->execute([$item['produto_id']]); $prod = $stmt->fetch();
-    if (!$prod) { echo json_encode(['ok'=>false,'erro'=>'Produto inválido']); exit; }
-    $item['nome_produto'] = $prod['nome'];
-    $precoUnit = (float)$prod['preco'];
-    // variações
-    $customNomes = []; $precoExtra = 0;
-    if (!empty($item['variacoes']) && is_array($item['variacoes'])) {
-        foreach ($item['variacoes'] as $varId) {
-            $v = $pdo->prepare("SELECT * FROM produto_variacoes WHERE id=? AND produto_id=?");
-            $v->execute([$varId, $item['produto_id']]); $vr = $v->fetch();
-            if ($vr) { $precoExtra += (float)$vr['preco_extra']; $customNomes[] = $vr['nome']; }
+try {
+    $body = json_decode(file_get_contents('php://input'), true);
+
+    if (!is_array($body)) {
+        resposta(false, ['erro' => 'JSON inválido recebido.'], 400);
+    }
+
+    $nomeCli   = trim($body['nome'] ?? '');
+    $waCliente = preg_replace('/\D/', '', $body['whatsapp'] ?? '');
+    $itens     = $body['itens'] ?? [];
+    $endereco  = trim($body['endereco'] ?? '');
+    $obs       = trim($body['observacoes'] ?? '');
+    $bairro    = trim($body['bairro'] ?? '');
+    $cupomCode = strtoupper(trim($body['cupom'] ?? ''));
+
+    $tipoEnt = $body['tipo_entrega'] ?? 'retirada';
+    if (!in_array($tipoEnt, ['entrega', 'retirada'], true)) {
+        $tipoEnt = 'retirada';
+    }
+
+    $pagamento = $body['pagamento'] ?? 'dinheiro';
+    if (!in_array($pagamento, ['dinheiro', 'pix', 'cartao'], true)) {
+        $pagamento = 'dinheiro';
+    }
+
+    if ($nomeCli === '') {
+        resposta(false, ['erro' => 'Informe o nome do cliente.'], 400);
+    }
+
+    if ($waCliente === '' || strlen($waCliente) < 10) {
+        resposta(false, ['erro' => 'Informe um WhatsApp válido com DDD.'], 400);
+    }
+
+    if (!is_array($itens) || empty($itens)) {
+        resposta(false, ['erro' => 'Carrinho vazio.'], 400);
+    }
+
+    if ($tipoEnt === 'entrega' && $endereco === '') {
+        resposta(false, ['erro' => 'Informe o endereço de entrega.'], 400);
+    }
+
+    $config = $pdo->query("SELECT * FROM config WHERE id = 1")->fetch(PDO::FETCH_ASSOC);
+
+    if (!$config) {
+        resposta(false, ['erro' => 'Configuração da loja não encontrada.'], 500);
+    }
+
+    if (!loja_aberta($config)) {
+        resposta(false, ['erro' => 'Loja fechada no momento.'], 403);
+    }
+
+    $subtotal = 0;
+    $itensProcessados = [];
+
+    foreach ($itens as $item) {
+        $produtoId = (int)($item['produto_id'] ?? 0);
+        $quantidade = max(1, (int)($item['quantidade'] ?? 1));
+        $obsItem = trim($item['obs'] ?? '');
+        $variacoes = $item['variacoes'] ?? [];
+
+        if ($produtoId <= 0) {
+            resposta(false, ['erro' => 'Produto inválido no carrinho.'], 400);
+        }
+
+        $stmt = $pdo->prepare("SELECT * FROM produtos WHERE id = ? AND disponivel = 1 LIMIT 1");
+        $stmt->execute([$produtoId]);
+        $produto = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$produto) {
+            resposta(false, ['erro' => 'Produto inválido ou indisponível.'], 400);
+        }
+
+        $precoUnit = (float)$produto['preco'];
+        $customNomes = [];
+
+        if (!empty($variacoes) && is_array($variacoes)) {
+            foreach ($variacoes as $varId) {
+                $varId = (int)$varId;
+
+                if ($varId <= 0) {
+                    continue;
+                }
+
+                $stmtVar = $pdo->prepare("SELECT * FROM produto_variacoes WHERE id = ? AND produto_id = ? LIMIT 1");
+                $stmtVar->execute([$varId, $produtoId]);
+                $variacao = $stmtVar->fetch(PDO::FETCH_ASSOC);
+
+                if ($variacao) {
+                    $precoUnit += (float)$variacao['preco_extra'];
+                    $customNomes[] = $variacao['nome'];
+                }
+            }
+        }
+
+        $subtotalItem = $precoUnit * $quantidade;
+
+        $itensProcessados[] = [
+            'produto_id' => $produtoId,
+            'nome_produto' => $produto['nome'],
+            'quantidade' => $quantidade,
+            'preco_unitario' => $precoUnit,
+            'subtotal' => $subtotalItem,
+            'obs' => $obsItem,
+            'customizacoes' => implode(', ', $customNomes)
+        ];
+
+        $subtotal += $subtotalItem;
+    }
+
+    $minPedido = (float)($config['pedido_minimo'] ?? 0);
+
+    if ($minPedido > 0 && $subtotal < $minPedido) {
+        resposta(false, [
+            'erro' => 'Pedido mínimo de ' . formatar_dinheiro($minPedido) . '.'
+        ], 400);
+    }
+
+    $taxaEntrega = 0;
+
+    if ($tipoEnt === 'entrega') {
+        $taxaEntrega = (float)($config['taxa_entrega'] ?? 0);
+
+        if ((int)($config['frete_por_zona'] ?? 0) === 1 && $bairro !== '') {
+            $zonas = $pdo->query("SELECT * FROM zonas_entrega WHERE ativo = 1")->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($zonas as $z) {
+                $bairrosZona = array_map('trim', explode(',', strtolower($z['bairros'] ?? '')));
+
+                if (in_array(strtolower($bairro), $bairrosZona, true)) {
+                    $taxaEntrega = (float)$z['taxa'];
+                    break;
+                }
+            }
         }
     }
-    $item['preco_unit'] = $precoUnit + $precoExtra;
-    $item['subtotal']   = $item['preco_unit'] * max(1,(int)$item['quantidade']);
-    $item['customizacoes'] = implode(', ', $customNomes);
-    $subtotal += $item['subtotal'];
-}
-unset($item);
 
-// Pedido mínimo
-$minPedido = (float)$config['pedido_minimo'];
-if ($minPedido > 0 && $subtotal < $minPedido) {
-    echo json_encode(['ok'=>false,'erro'=>'Pedido mínimo de '.formatar_dinheiro($minPedido)]); exit;
-}
+    $descontoPromo = 0;
 
-// Taxa de entrega
-$taxaEntrega = 0;
-if ($tipoEnt === 'entrega') {
-    if ((int)$config['frete_por_zona'] && $bairro) {
-        $zonas = $pdo->query("SELECT * FROM zonas_entrega WHERE ativo=1")->fetchAll();
-        foreach ($zonas as $z) {
-            $bairrosZona = array_map('trim', explode(',', strtolower($z['bairros'])));
-            if (in_array(strtolower($bairro), $bairrosZona)) { $taxaEntrega = (float)$z['taxa']; break; }
+    if (
+        (int)($config['promo_ativa'] ?? 0) === 1 &&
+        (
+            empty($config['promo_fim']) ||
+            strtotime($config['promo_fim']) > time()
+        )
+    ) {
+        $descontoPromo = round($subtotal * (float)($config['promo_desconto'] ?? 0) / 100, 2);
+    }
+
+    $descontoCupom = 0;
+    $cupomAplicado = null;
+
+    if ($cupomCode !== '') {
+        $stmtCupom = $pdo->prepare("SELECT * FROM cupons WHERE codigo = ? AND ativo = 1 LIMIT 1");
+        $stmtCupom->execute([$cupomCode]);
+        $cupom = $stmtCupom->fetch(PDO::FETCH_ASSOC);
+
+        if ($cupom) {
+            $validoAte = $cupom['valido_ate'] ?? null;
+            $usoMaximo = (int)($cupom['uso_maximo'] ?? 0);
+            $usoAtual = (int)($cupom['uso_atual'] ?? 0);
+
+            $cupomValido = !$validoAte || strtotime($validoAte) > time();
+            $usoDisponivel = !$usoMaximo || $usoAtual < $usoMaximo;
+
+            if ($cupomValido && $usoDisponivel) {
+                $baseCupom = max(0, $subtotal - $descontoPromo);
+
+                if ($cupom['tipo'] === 'percentual') {
+                    $descontoCupom = round($baseCupom * (float)$cupom['valor'] / 100, 2);
+                } else {
+                    $descontoCupom = min((float)$cupom['valor'], $baseCupom);
+                }
+
+                $cupomAplicado = $cupom;
+            }
         }
-        if (!$taxaEntrega) $taxaEntrega = (float)$config['taxa_entrega'];
-    } else {
-        $taxaEntrega = (float)$config['taxa_entrega'];
     }
-}
 
-// Promoção relâmpago
-$descontoPromo = 0;
-if ((int)$config['promo_ativa'] && (!$config['promo_fim'] || strtotime($config['promo_fim']) > time())) {
-    $descontoPromo = round($subtotal * (float)$config['promo_desconto'] / 100, 2);
-}
+    $total = max(0, $subtotal - $descontoPromo - $descontoCupom + $taxaEntrega);
 
-// Cupom de desconto
-$descontoCupom = 0; $cupomAplicado = null;
-if ($cupomCode) {
-    $cu = $pdo->prepare("SELECT * FROM cupons WHERE codigo=? AND ativo=1"); $cu->execute([$cupomCode]); $cu=$cu->fetch();
-    if ($cu && (!$cu['valido_ate'] || strtotime($cu['valido_ate'])>time()) && (!$cu['uso_maximo'] || $cu['uso_atual']<$cu['uso_maximo'])) {
-        $descontoCupom = $cu['tipo']==='percentual' ? round(($subtotal-$descontoPromo)*$cu['valor']/100,2) : min((float)$cu['valor'],$subtotal);
-        $cupomAplicado = $cu;
+    $numero = gerar_numero_pedido();
+
+    $mensagemWhatsapp = "Pedido #{$numero} - {$nomeCli}";
+
+    $pdo->beginTransaction();
+
+    $stmtPedido = $pdo->prepare("
+        INSERT INTO pedidos (
+            numero,
+            nome_cliente,
+            whatsapp_cliente,
+            tipo_entrega,
+            endereco_entrega,
+            subtotal,
+            taxa_entrega,
+            total,
+            observacoes,
+            status,
+            pagamento,
+            mensagem_whatsapp,
+            cupom_codigo,
+            cupom_desconto,
+            created_at
+        ) VALUES (
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            'novo',
+            ?,
+            ?,
+            ?,
+            ?,
+            NOW()
+        )
+    ");
+
+    $stmtPedido->execute([
+        $numero,
+        $nomeCli,
+        $waCliente,
+        $tipoEnt,
+        $endereco,
+        $subtotal,
+        $taxaEntrega,
+        $total,
+        $obs,
+        $pagamento,
+        $mensagemWhatsapp,
+        $cupomAplicado ? $cupomCode : null,
+        $descontoCupom
+    ]);
+
+    $pedidoId = (int)$pdo->lastInsertId();
+
+    $stmtItem = $pdo->prepare("
+        INSERT INTO pedido_itens (
+            pedido_id,
+            produto_id,
+            nome_produto,
+            preco_unitario,
+            quantidade,
+            subtotal,
+            obs,
+            customizacoes
+        ) VALUES (
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?
+        )
+    ");
+
+    foreach ($itensProcessados as $item) {
+        $stmtItem->execute([
+            $pedidoId,
+            $item['produto_id'],
+            $item['nome_produto'],
+            $item['preco_unitario'],
+            $item['quantidade'],
+            $item['subtotal'],
+            $item['obs'],
+            $item['customizacoes']
+        ]);
+
+        $stmtUpdate = $pdo->prepare("
+            UPDATE produtos
+            SET total_vendido = total_vendido + ?
+            WHERE id = ?
+        ");
+
+        $stmtUpdate->execute([
+            $item['quantidade'],
+            $item['produto_id']
+        ]);
     }
+
+    if ($cupomAplicado) {
+        $stmtCupomUso = $pdo->prepare("
+            UPDATE cupons
+            SET uso_atual = uso_atual + 1
+            WHERE id = ?
+        ");
+
+        $stmtCupomUso->execute([$cupomAplicado['id']]);
+    }
+
+    $pdo->query("UPDATE produtos SET mais_vendido = 0");
+
+    $pdo->query("
+        UPDATE produtos
+        SET mais_vendido = 1
+        WHERE id IN (
+            SELECT produto_id
+            FROM (
+                SELECT produto_id
+                FROM pedido_itens
+                GROUP BY produto_id
+                ORDER BY SUM(quantidade) DESC
+                LIMIT 3
+            ) AS ranking
+        )
+    ");
+
+    $pdo->commit();
+
+    $msgFidelidade = '';
+
+    try {
+        if (function_exists('upsert_cliente') && function_exists('verificar_fidelidade')) {
+            $cliente = upsert_cliente($pdo, $waCliente, $nomeCli, $total);
+
+            if ($cliente) {
+                $fid = verificar_fidelidade($pdo, $config, $cliente);
+
+                if ($fid && isset($fid['msg'])) {
+                    $msgFidelidade = $fid['msg'];
+                }
+            }
+        }
+    } catch (Throwable $e) {
+        $msgFidelidade = '';
+    }
+
+    $whatsappLoja = preg_replace('/\D/', '', $config['whatsapp'] ?? '');
+
+    if ($whatsappLoja === '') {
+        $whatsappLoja = '51994117445';
+    }
+
+    if (substr($whatsappLoja, 0, 2) !== '55') {
+        $whatsappLoja = '55' . $whatsappLoja;
+    }
+
+    resposta(true, [
+        'numero' => $numero,
+        'pedido_id' => $pedidoId,
+        'subtotal' => $subtotal,
+        'total' => $total,
+        'desconto_promo' => $descontoPromo,
+        'desconto_cupom' => $descontoCupom,
+        'taxa_entrega' => $taxaEntrega,
+        'whatsapp_loja' => $whatsappLoja,
+        'pix_chave' => $config['pix_chave'] ?? '',
+        'pix_tipo' => $config['pix_tipo'] ?? '',
+        'pix_nome' => $config['pix_nome'] ?? '',
+        'fidelidade_msg' => $msgFidelidade
+    ]);
+
+} catch (Throwable $e) {
+    if (isset($pdo) && $pdo instanceof PDO && $pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
+    resposta(false, [
+        'erro' => 'Erro ao criar o pedido.',
+        'debug' => $e->getMessage()
+    ], 500);
 }
-
-$total = max(0, $subtotal - $descontoPromo - $descontoCupom + $taxaEntrega);
-
-// Gravar pedido
-$numero = gerar_numero_pedido();
-$wa = $config['whatsapp'] ? json_encode($config['whatsapp']) : '""';
-$pdo->prepare("INSERT INTO pedidos (numero,nome_cliente,whatsapp_cliente,tipo_entrega,endereco_entrega,observacoes,subtotal,taxa_entrega,total,status,pagamento,mensagem_whatsapp,cupom_codigo,cupom_desconto,created_at) VALUES (?,?,?,?,?,?,?,?,?,'novo',?,?,?,?,NOW())")
-    ->execute([$numero,$nomeCli,$waCliente,$tipoEnt,$endereço,$obs,$subtotal,$taxaEntrega,$total,$pagamento,$waCliente,$cupomCode,$descontoCupom]);
-$pedidoId = $pdo->lastInsertId();
-
-foreach ($itens as $item) {
-    $pdo->prepare("INSERT INTO pedido_itens (pedido_id,produto_id,nome_produto,quantidade,preco_unit,subtotal,obs,customizacoes) VALUES (?,?,?,?,?,?,?,?)")
-        ->execute([$pedidoId,$item['produto_id'],$item['nome_produto'],$item['quantidade'],$item['preco_unit'],$item['subtotal'],$item['obs']??'',$item['customizacoes']]);
-    $pdo->prepare("UPDATE produtos SET total_vendido=total_vendido+? WHERE id=?")->execute([$item['quantidade'],$item['produto_id']]);
-}
-
-// Atualizar uso do cupom
-if ($cupomAplicado) $pdo->prepare("UPDATE cupons SET uso_atual=uso_atual+1 WHERE id=?")->execute([$cupomAplicado['id']]);
-
-// Atualizar mais vendidos
-$pdo->query("UPDATE produtos p SET mais_vendido=0");
-$pdo->query("UPDATE produtos SET mais_vendido=1 WHERE id IN (SELECT produto_id FROM (SELECT produto_id FROM pedido_itens GROUP BY produto_id ORDER BY SUM(quantidade) DESC LIMIT 3) t)");
-
-// CRM — upsert cliente
-$cliente = null;
-if ($waCliente) {
-    $cliente = upsert_cliente($pdo, $waCliente, $nomeCli, $total);
-}
-
-// Mensagem de fidelidade
-$msgFidelidade = '';
-if ($cliente && $config) {
-    $fid = verificar_fidelidade($pdo, $config, $cliente);
-    if ($fid) $msgFidelidade = $fid['msg'];
-}
-
-echo json_encode([
-    'ok' => true,
-    'numero' => $numero,
-    'pedido_id' => $pedidoId,
-    'total' => $total,
-    'desconto_promo' => $descontoPromo,
-    'desconto_cupom' => $descontoCupom,
-    'taxa_entrega' => $taxaEntrega,
-    'whatsapp_loja' => preg_replace('/\D/','',$config['whatsapp']),
-    'pix_chave' => $config['pix_chave'] ?? '',
-    'pix_tipo'  => $config['pix_tipo']  ?? '',
-    'pix_nome'  => $config['pix_nome']  ?? '',
-    'fidelidade_msg' => $msgFidelidade,
-]);

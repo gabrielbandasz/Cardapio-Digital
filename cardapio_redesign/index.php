@@ -1,12 +1,19 @@
 <?php
 require_once __DIR__ . '/config/db.php';
-require_once __DIR__ . '/includes/funcoes.php';
 require_once __DIR__ . '/includes/auth.php';
-
+header('Location: menu.php');
+exit;
 $config = $pdo->query("SELECT nome_restaurante, descricao, aberto, cor_primaria, whatsapp FROM config WHERE id=1")->fetch();
 $config['logo'] = null;
 $cor = h($config['cor_primaria'] ?? '#e85d04');
 $jaLogado = admin_logado();
+$slug = $_GET['slug'] ?? null;
+if ($slug) {
+    $stmt = $pdo->prepare("SELECT * FROM config WHERE slug = ? LIMIT 1");
+    $stmt->execute([$slug]);
+    $config = $stmt->fetch();
+    if (!$config) { http_response_code(404); die('Restaurante não encontrado.'); }
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR" data-theme="dark">
@@ -30,7 +37,7 @@ $jaLogado = admin_logado();
     <?php endif; ?>
     <span class="lp-name"><?= h($config['nome_restaurante']) ?></span>
   </div>
-  <button class="btn btn-outline btn-sm" id="darkToggle" style="gap:6px;">🌙 Tema</button>
+  <button class="btn btn-outline btn-sm" id="darkToggle" aria-label="Alternar tema" style="gap:6px;">🌙 Tema</button>
 </header>
 
 <main class="lp-hero">
@@ -68,16 +75,20 @@ $jaLogado = admin_logado();
 </footer>
 
 <script>
-(function() {
+// ── Dark mode ─────────────────────────────────────────────
+(function(){
   const root = document.documentElement;
   const btn  = document.getElementById('darkToggle');
-  const saved = localStorage.getItem('darkMode');
-  if (saved === '0') root.setAttribute('data-theme','light');
-  btn.addEventListener('click', () => {
-    const d = root.getAttribute('data-theme') === 'dark';
-    root.setAttribute('data-theme', d ? 'light' : 'dark');
-    localStorage.setItem('darkMode', d ? '0' : '1');
-  });
+  if (!btn) return;
+  const isDark = () => root.getAttribute('data-theme') !== 'light';
+  btn.setAttribute('aria-label','Alternar tema');
+  btn.textContent = isDark() ? '☀️ Tema' : '🌙 Tema';
+  btn.onclick = () => {
+    const dark = isDark();
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+    localStorage.setItem('darkMode', dark ? '0' : '1');
+    btn.textContent = dark ? '🌙 Tema' : '☀️ Tema';
+  };
 })();
 </script>
 </body>

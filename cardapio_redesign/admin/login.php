@@ -56,11 +56,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
   <div style="text-align:center;margin-top:20px;">
     <a href="../index.php" style="font-size:13px;color:var(--muted);">← Voltar ao início</a>
+    <br><button id="darkToggle" class="btn btn-outline btn-sm" aria-label="Alternar tema" style="margin-top:10px">🌙 Tema</button>
   </div>
 </div>
 
 <script>
-if (localStorage.getItem('darkMode') === '0') document.documentElement.setAttribute('data-theme','light');
+if(localStorage.getItem("darkMode")==="0")document.documentElement.setAttribute("data-theme","light");
+(function(){
+  const root = document.documentElement;
+  const btn  = document.getElementById('darkToggle');
+  if (!btn) return;
+  const isDark = () => root.getAttribute('data-theme') !== 'light';
+  btn.setAttribute('aria-label','Alternar tema');
+  btn.textContent = isDark() ? '☀️ Tema' : '🌙 Tema';
+  btn.onclick = () => {
+    const dark = isDark();
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+    localStorage.setItem('darkMode', dark ? '0' : '1');
+    btn.textContent = dark ? '🌙 Tema' : '☀️ Tema';
+  };
+})();
 </script>
 </body>
 </html>

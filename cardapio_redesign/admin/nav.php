@@ -25,6 +25,7 @@ function navLink($href,$label,$pagina){
       <?= $config['aberto'] ? '● Aberto' : '● Fechado' ?>
     </span>
     <a href="../index.php" target="_blank" class="btn btn-outline btn-sm" style="flex-shrink:0">👁 Loja</a>
+    <button id="darkToggle" class="btn btn-outline btn-sm" aria-label="Alternar tema" style="flex-shrink:0">🌙 Tema</button>
     <a href="logout.php" class="btn btn-danger btn-sm" style="flex-shrink:0">Sair</a>
   </div>
 </nav>

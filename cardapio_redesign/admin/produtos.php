@@ -15,7 +15,9 @@ $uploadDir = __DIR__ . '/../assets/uploads/';
 function processarImagem(array $file, string $dir): ?string {
     if ($file['error'] !== UPLOAD_ERR_OK) return null;
     $allowed = ['image/jpeg','image/png','image/webp','image/gif'];
-    if (!in_array($file['type'], $allowed)) return null;
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $realMime = $finfo->file($file['tmp_name']);
+    if (!in_array($realMime, $allowed)) return null;
     if ($file['size'] > 4 * 1024 * 1024) return null;
     $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     $name = 'img_' . uniqid() . '.' . $ext;

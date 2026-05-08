@@ -1,5 +1,7 @@
 <?php
 require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/../includes/rate_limit.php';
+rate_limit('sugestoes', 30, 60);
 header('Content-Type: application/json; charset=utf-8');
 $produtoId = (int)($_GET['produto_id'] ?? 0);
 if (!$produtoId) { echo json_encode([]); exit; }

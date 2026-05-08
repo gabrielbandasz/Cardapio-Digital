@@ -167,4 +167,20 @@ if ('Notification' in window && Notification.permission === 'default') {
 setInterval(verificarNovos, 15000);
 </script>
 <script>if(localStorage.getItem("darkMode")==="0")document.documentElement.setAttribute("data-theme","light");</script>
+<script>
+(function(){
+  const root = document.documentElement;
+  const btn  = document.getElementById('darkToggle');
+  if (!btn) return;
+  const isDark = () => root.getAttribute('data-theme') !== 'light';
+  btn.setAttribute('aria-label','Alternar tema');
+  btn.textContent = isDark() ? '☀️ Tema' : '🌙 Tema';
+  btn.onclick = () => {
+    const dark = isDark();
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+    localStorage.setItem('darkMode', dark ? '0' : '1');
+    btn.textContent = dark ? '🌙 Tema' : '☀️ Tema';
+  };
+})();
+</script>
 </body></html>
