@@ -1,2 +1,0 @@
-Execute este arquivo SQL após o setup.sql para adicionar os recursos da v2:
-  mysql -u usuario -p cardapio_digital < sql/melhorias.sql
