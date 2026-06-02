@@ -1,0 +1,12 @@
+{
+  "name": "Cardápio Digital",
+  "short_name": "Cardápio",
+  "description": "Peça seu lanche pelo cardápio digital",
+  "start_url": "menu.php",
+  "display": "standalone",
+  "background_color": "#111111",
+  "theme_color": "#e85d04",
+  "orientation": "portrait-primary",
+  "categories": ["food", "shopping"],
+  "prefer_related_applications": false
+}
