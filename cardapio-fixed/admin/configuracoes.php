@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../includes/funcoes.php';
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/upload.php';
 define('BASE_URL','../');
 exigir_login();
 csrf_verify();
@@ -17,8 +18,66 @@ if ($action === 'save_geral') {
     $msg = '✅ Configurações salvas!';
 } elseif ($action === 'save_visual') {
     $cor = preg_match('/^#[0-9a-f]{6}$/i', $_POST['cor_primaria']??'') ? $_POST['cor_primaria'] : '#e85d04';
-    $pdo->prepare("UPDATE config SET cor_primaria=?,nome_restaurante=? WHERE id=1")->execute([$cor,trim($_POST['nome_restaurante']??$c['nome_restaurante'])]);
-    $msg = '✅ Visual atualizado!';
+
+    $logo = $c['logo'] ?? null;
+
+    if (!empty($_FILES['logo_arquivo']['name'])) {
+        $up = upload_imagem($_FILES['logo_arquivo']);
+        if ($up['ok']) {
+            if ($logo && strpos($logo, 'assets/uploads/') === 0) {
+                @unlink(__DIR__ . '/../' . $logo);
+            }
+            $logo = $up['path'];
+        } else {
+            $msg = '⚠️ ' . $up['erro'];
+        }
+    } elseif (!empty($_POST['logo_url'])) {
+        $logoUrl = trim($_POST['logo_url']);
+        if ($logoUrl !== $logo && $logo && strpos($logo, 'assets/uploads/') === 0) {
+            @unlink(__DIR__ . '/../' . $logo);
+        }
+        $logo = $logoUrl;
+    }
+
+    $banner = $c['banner'] ?? null;
+
+    if (!empty($_FILES['banner_arquivo']['name'])) {
+        $up = upload_imagem($_FILES['banner_arquivo'], '', 4096);
+        if ($up['ok']) {
+            if ($banner && strpos($banner, 'assets/uploads/') === 0) {
+                @unlink(__DIR__ . '/../' . $banner);
+            }
+            $banner = $up['path'];
+        } else {
+            $msg = '⚠️ ' . $up['erro'];
+        }
+    } elseif (!empty($_POST['banner_url'])) {
+        $bannerUrl = trim($_POST['banner_url']);
+        if ($bannerUrl !== $banner && $banner && strpos($banner, 'assets/uploads/') === 0) {
+            @unlink(__DIR__ . '/../' . $banner);
+        }
+        $banner = $bannerUrl;
+    }
+
+    $pdo->prepare("UPDATE config SET cor_primaria=?,nome_restaurante=?,logo=?,banner=? WHERE id=1")->execute([$cor,trim($_POST['nome_restaurante']??$c['nome_restaurante']),$logo,$banner]);
+    if ($msg === '') $msg = '✅ Visual atualizado!';
+} elseif ($action === 'remover_logo') {
+    if (!empty($c['logo']) && strpos($c['logo'], 'assets/uploads/') === 0) {
+        @unlink(__DIR__ . '/../' . $c['logo']);
+    }
+    $pdo->prepare("UPDATE config SET logo=NULL WHERE id=1")->execute();
+    $msg = '✅ Logo removido!';
+} elseif ($action === 'remover_banner') {
+    if (!empty($c['banner']) && strpos($c['banner'], 'assets/uploads/') === 0) {
+        @unlink(__DIR__ . '/../' . $c['banner']);
+    }
+    $pdo->prepare("UPDATE config SET banner=NULL WHERE id=1")->execute();
+    $msg = '✅ Banner removido!';
+} elseif ($action === 'save_redes') {
+    $fields = ['instagram','facebook','tiktok'];
+    $vals = array_map(fn($f) => trim($_POST[$f] ?? ''), $fields);
+    $pdo->prepare("UPDATE config SET instagram=?,facebook=?,tiktok=? WHERE id=1")->execute($vals);
+    $msg = '✅ Redes sociais salvas!';
 } elseif ($action === 'save_pix') {
     $pdo->prepare("UPDATE config SET pix_chave=?,pix_tipo=?,pix_nome=? WHERE id=1")->execute([trim($_POST['pix_chave']),trim($_POST['pix_tipo']),trim($_POST['pix_nome'])]);
     $msg = '✅ PIX salvo!';
@@ -113,7 +172,29 @@ if (isset($_GET['msg'])) $msg = $_GET['msg'];
   <!-- Personalização visual -->
   <details class="card mb-4">
     <summary style="cursor:pointer;font-weight:700;font-size:15px;padding:4px 0">🎨 Personalização visual</summary>
-    <form method="POST" style="margin-top:16px">
+    <?php if (!empty($c['logo'])): ?>
+    <div style="display:block;margin:16px 0 0">
+      <label class="form-label">🖼️ Logo atual</label>
+      <img src="<?= (strpos($c['logo'],'http')===0) ? h($c['logo']) : '../' . h($c['logo']) ?>" alt="Logo atual" style="width:100%;max-height:120px;object-fit:contain;border-radius:12px;border:1px solid var(--border);background:var(--bg-alt)">
+      <form method="POST" style="display:inline-block;margin-top:6px">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="remover_logo">
+        <button type="submit" class="btn btn-danger" style="font-size:12px;padding:4px 10px" onclick="return confirm('Remover logo?')">🗑 Remover logo</button>
+      </form>
+    </div>
+    <?php endif; ?>
+    <?php if (!empty($c['banner'])): ?>
+    <div style="display:block;margin:16px 0 0">
+      <label class="form-label">🖼️ Banner atual</label>
+      <img src="<?= (strpos($c['banner'],'http')===0) ? h($c['banner']) : '../' . h($c['banner']) ?>" alt="Banner atual" style="width:100%;max-height:160px;object-fit:cover;border-radius:12px;border:1px solid var(--border);background:var(--bg-alt)">
+      <form method="POST" style="display:inline-block;margin-top:6px">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="remover_banner">
+        <button type="submit" class="btn btn-danger" style="font-size:12px;padding:4px 10px" onclick="return confirm('Remover banner?')">🗑 Remover banner</button>
+      </form>
+    </div>
+    <?php endif; ?>
+    <form method="POST" style="margin-top:16px" enctype="multipart/form-data">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="save_visual">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -125,12 +206,76 @@ if (isset($_GET['msg'])) $msg = $_GET['msg'];
             <input type="text" id="corHex" class="form-control" value="<?= h($c['cor_primaria'] ?? '#e85d04') ?>" placeholder="#e85d04" style="flex:1;font-family:monospace">
           </div>
         </div>
-        <div class="form-group" style="grid-column:span 2"><label class="form-label">URL do logo (link ou caminho)</label><input name="logo" class="form-control" value="<?= h($c['logo']??'') ?>" placeholder="https://..."></div>
+        <div class="form-group" style="grid-column:span 2">
+          <label class="form-label">🖼️ Novo logo</label>
+
+          <div style="margin-bottom:10px">
+            <button type="button" class="img-tab-btn active" id="tabUploadLogo" onclick="switchLogoTab('upload')">⬆ Upload</button>
+            <button type="button" class="img-tab-btn" id="tabUrlLogo" onclick="switchLogoTab('url')">🔗 URL</button>
+          </div>
+
+          <div id="areaUploadLogo">
+            <div class="img-upload-area" id="dropAreaLogo">
+              <input type="file" name="logo_arquivo" accept="image/*" id="fileInputLogo" onchange="previewLogoFile(this)">
+              <div class="icon">🖼</div>
+              <p><strong>Clique ou arraste uma imagem aqui</strong><br>JPG, PNG, GIF ou WEBP até 2MB</p>
+            </div>
+            <img id="imgPreviewNewLogo" src="" alt="" style="display:none;width:100%;max-height:120px;object-fit:contain;border-radius:12px;margin-top:8px">
+          </div>
+
+          <div id="areaUrlLogo" style="display:none">
+            <input name="logo_url" id="logoUrlInput" class="form-control" placeholder="https://exemplo.com/logo.png" value="<?= (!empty($c['logo']) && strpos($c['logo'],'http')===0) ? h($c['logo']) : '' ?>">
+          </div>
+        </div>
+
+        <div class="form-group" style="grid-column:span 2">
+          <label class="form-label">🖼️ Novo banner do cardápio</label>
+          <div style="margin-bottom:10px">
+            <button type="button" class="img-tab-btn active" id="tabUploadBanner" onclick="switchBannerTab('upload')">⬆ Upload</button>
+            <button type="button" class="img-tab-btn" id="tabUrlBanner" onclick="switchBannerTab('url')">🔗 URL</button>
+          </div>
+
+          <div id="areaUploadBanner">
+            <div class="img-upload-area" id="dropAreaBanner">
+              <input type="file" name="banner_arquivo" accept="image/*" id="fileInputBanner" onchange="previewBannerFile(this)">
+              <div class="icon">🖼</div>
+              <p><strong>Clique ou arraste uma imagem aqui</strong><br>JPG, PNG, GIF ou WEBP até 4MB — recomendado formato largo (ex: 1200x400)</p>
+            </div>
+            <img id="imgPreviewNewBanner" src="" alt="" style="display:none;width:100%;max-height:160px;object-fit:cover;border-radius:12px;margin-top:8px">
+          </div>
+
+          <div id="areaUrlBanner" style="display:none">
+            <input name="banner_url" id="bannerUrlInput" class="form-control" placeholder="https://exemplo.com/banner.jpg" value="<?= (!empty($c['banner']) && strpos($c['banner'],'http')===0) ? h($c['banner']) : '' ?>">
+          </div>
+        </div>
       </div>
       <div class="form-group">
         <div style="background:var(--primary);color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;display:inline-block;font-size:14px" id="corPreview">Prévia da cor — <?= h($c['nome_restaurante']) ?></div>
       </div>
       <button type="submit" class="btn btn-primary">Salvar visual</button>
+    </form>
+  </details>
+
+  <!-- Redes sociais -->
+  <details class="card mb-4">
+    <summary style="cursor:pointer;font-weight:700;font-size:15px;padding:4px 0">📱 Redes sociais</summary>
+    <form method="POST" style="margin-top:16px">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="save_redes">
+      <div class="form-group">
+        <label class="form-label">📷 Instagram</label>
+        <input name="instagram" class="form-control" value="<?= h($c['instagram']??'') ?>" placeholder="https://instagram.com/sualoja">
+      </div>
+      <div class="form-group">
+        <label class="form-label">📘 Facebook</label>
+        <input name="facebook" class="form-control" value="<?= h($c['facebook']??'') ?>" placeholder="https://facebook.com/sualoja">
+      </div>
+      <div class="form-group">
+        <label class="form-label">🎵 TikTok</label>
+        <input name="tiktok" class="form-control" value="<?= h($c['tiktok']??'') ?>" placeholder="https://tiktok.com/@sualoja">
+      </div>
+      <p style="font-size:12px;color:var(--muted)">💡 Deixe em branco para não exibir o ícone. Os links aparecem no rodapé do cardápio.</p>
+      <button type="submit" class="btn btn-primary">Salvar redes sociais</button>
     </form>
   </details>
 
@@ -281,6 +426,74 @@ const preview = document.getElementById('corPreview');
 if (colorInput && hexInput && preview) {
   colorInput.addEventListener('input', e => { hexInput.value = e.target.value; preview.style.background = e.target.value; });
   hexInput.addEventListener('input', e => { if (/^#[0-9a-f]{6}$/i.test(e.target.value)) { colorInput.value = e.target.value; preview.style.background = e.target.value; } });
+}
+
+function switchLogoTab(tab) {
+  document.getElementById('areaUploadLogo').style.display = tab === 'upload' ? 'block' : 'none';
+  document.getElementById('areaUrlLogo').style.display = tab === 'url' ? 'block' : 'none';
+  document.getElementById('tabUploadLogo').className = 'img-tab-btn' + (tab === 'upload' ? ' active' : '');
+  document.getElementById('tabUrlLogo').className = 'img-tab-btn' + (tab === 'url' ? ' active' : '');
+}
+
+function previewLogoFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = document.getElementById('imgPreviewNewLogo');
+    img.src = e.target.result;
+    img.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+const dropLogo = document.getElementById('dropAreaLogo');
+if (dropLogo) {
+  dropLogo.addEventListener('dragover', e => { e.preventDefault(); dropLogo.style.borderColor = 'var(--primary)'; });
+  dropLogo.addEventListener('dragleave', () => { dropLogo.style.borderColor = ''; });
+  dropLogo.addEventListener('drop', e => {
+    e.preventDefault();
+    dropLogo.style.borderColor = '';
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      document.getElementById('fileInputLogo').files = e.dataTransfer.files;
+      previewLogoFile({files:[file]});
+    }
+  });
+}
+
+function switchBannerTab(tab) {
+  document.getElementById('areaUploadBanner').style.display = tab === 'upload' ? 'block' : 'none';
+  document.getElementById('areaUrlBanner').style.display = tab === 'url' ? 'block' : 'none';
+  document.getElementById('tabUploadBanner').className = 'img-tab-btn' + (tab === 'upload' ? ' active' : '');
+  document.getElementById('tabUrlBanner').className = 'img-tab-btn' + (tab === 'url' ? ' active' : '');
+}
+
+function previewBannerFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = document.getElementById('imgPreviewNewBanner');
+    img.src = e.target.result;
+    img.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+const dropBanner = document.getElementById('dropAreaBanner');
+if (dropBanner) {
+  dropBanner.addEventListener('dragover', e => { e.preventDefault(); dropBanner.style.borderColor = 'var(--primary)'; });
+  dropBanner.addEventListener('dragleave', () => { dropBanner.style.borderColor = ''; });
+  dropBanner.addEventListener('drop', e => {
+    e.preventDefault();
+    dropBanner.style.borderColor = '';
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      document.getElementById('fileInputBanner').files = e.dataTransfer.files;
+      previewBannerFile({files:[file]});
+    }
+  });
 }
 </script>
 

@@ -2388,6 +2388,12 @@ function buildProdData(array $p, array $opcoesPorProduto): array {
     <?php endif; ?>
   </header>
 
+  <?php if (!empty($config['banner'])): ?>
+    <div class="cardapio-banner" style="width:100%;max-height:280px;overflow:hidden">
+      <img src="<?= h($config['banner']) ?>" alt="<?= h($config['nome_restaurante']) ?>" style="width:100%;height:100%;max-height:280px;object-fit:cover;display:block">
+    </div>
+  <?php endif; ?>
+
   <?php if ($promoAtiva): ?>
     <div class="promo-bar" id="promoBanner">
       <span><?= h($config['promo_titulo'] ?? 'Promoção') ?> — <strong><?= (int) $config['promo_desconto'] ?>%
@@ -3444,6 +3450,25 @@ function buildProdData(array $p, array $opcoesPorProduto): array {
   </script>
 
   <footer style="text-align:center;padding:20px;font-size:12px;color:var(--muted);border-top:1px solid var(--brd);">
+    <?php if (!empty($config['instagram']) || !empty($config['facebook']) || !empty($config['tiktok'])): ?>
+      <div style="display:flex;justify-content:center;gap:14px;margin-bottom:10px">
+        <?php if (!empty($config['instagram'])): ?>
+          <a href="<?= h($config['instagram']) ?>" target="_blank" rel="noopener" aria-label="Instagram" style="color:var(--muted);display:inline-flex">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1112.63 8 4 4 0 0116 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+          </a>
+        <?php endif; ?>
+        <?php if (!empty($config['facebook'])): ?>
+          <a href="<?= h($config['facebook']) ?>" target="_blank" rel="noopener" aria-label="Facebook" style="color:var(--muted);display:inline-flex">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 2h-3a5 5 0 00-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 011-1h3z"/></svg>
+          </a>
+        <?php endif; ?>
+        <?php if (!empty($config['tiktok'])): ?>
+          <a href="<?= h($config['tiktok']) ?>" target="_blank" rel="noopener" aria-label="TikTok" style="color:var(--muted);display:inline-flex">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M16.6 5.82s.51.5 0 0A4.278 4.278 0 0115.54 3h-3.09v12.4a2.592 2.592 0 01-2.59 2.5c-1.42 0-2.6-1.16-2.6-2.6 0-1.72 1.66-3.01 3.37-2.48V9.66c-3.45-.46-6.47 2.22-6.47 5.64 0 3.33 2.76 5.7 5.69 5.7 3.14 0 5.69-2.55 5.69-5.7V9.01a7.35 7.35 0 004.3 1.38V7.3s-1.88.09-3.24-1.48z"/></svg>
+          </a>
+        <?php endif; ?>
+      </div>
+    <?php endif; ?>
     <?= h($config['nome_restaurante']) ?> · Cardápio Digital
     <a href="admin/login.php" style="margin-left:16px;color:var(--brd);font-size:11px;" title="Acesso restrito">⚙</a>
   </footer>
