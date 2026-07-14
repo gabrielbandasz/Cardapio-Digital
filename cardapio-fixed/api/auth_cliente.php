@@ -5,24 +5,8 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/rate_limit.php';
 rate_limit('auth_cliente', 15, 60);
 
-// ══════════════════════════════════════════════════════════════
-// CONFIGURAÇÕES DE E-MAIL
-// ══════════════════════════════════════════════════════════════
-// MODO_DEBUG = true  → o código aparece na tela (para testes)
-// MODO_DEBUG = false → envia o e-mail de verdade
-define('MODO_DEBUG', true);
-
-// Para usar SMTP (Gmail, etc) em vez do mail() padrão:
-// 1. Instale PHPMailer: composer require phpmailer/phpmailer
-// 2. Mude USAR_SMTP para true e preencha as configs abaixo
-define('USAR_SMTP', false);
-define('SMTP_HOST', 'smtp.gmail.com');
-define('SMTP_PORT', 587);
-define('SMTP_USER', 'seu@gmail.com');
-define('SMTP_PASS', 'sua_senha_app');
-define('SMTP_FROM', 'seu@gmail.com');
-define('SMTP_NAME', 'Seu Restaurante');
-// ══════════════════════════════════════════════════════════════
+// Configurações de e-mail (MODO_DEBUG_EMAIL, USAR_SMTP, SMTP_*) vêm do .env,
+// carregadas centralmente em config/db.php. Veja .env.example para instruções.
 
 $action = $_POST['action'] ?? '';
 
@@ -87,14 +71,14 @@ if ($action === 'enviar_codigo') {
         'expira'   => time() + 600,
     ];
 
-    if (MODO_DEBUG) {
+    if (MODO_DEBUG_EMAIL) {
         echo json_encode(['ok' => true, 'debug_codigo' => $codigo]); exit;
     }
 
     $enviado = enviarCodigoEmail($email, $nome, $codigo);
     if (!$enviado) {
         error_log("Falha ao enviar email de verificacao para: {$email}");
-        echo json_encode(['ok' => false, 'erro' => 'Não foi possível enviar o e-mail. Ative MODO_DEBUG para testar.']); exit;
+        echo json_encode(['ok' => false, 'erro' => 'Não foi possível enviar o e-mail. Verifique as configurações de SMTP no .env.']); exit;
     }
     echo json_encode(['ok' => true]); exit;
 }
@@ -109,7 +93,7 @@ if ($action === 'reenviar_codigo') {
     $_SESSION['cad_pendente']['codigo'] = $codigo;
     $_SESSION['cad_pendente']['expira'] = time() + 600;
 
-    if (MODO_DEBUG) {
+    if (MODO_DEBUG_EMAIL) {
         echo json_encode(['ok' => true, 'debug_codigo' => $codigo]); exit;
     }
     $enviado = enviarCodigoEmail($pend['email'], $pend['nome'], $codigo);
@@ -219,9 +203,11 @@ echo json_encode(['ok' => false, 'erro' => 'Ação inválida.']);
 // ── Helper: enviar e-mail ────────────────────────────────────────
 function enviarCodigoEmail(string $email, string $nome, string $codigo): bool {
     if (USAR_SMTP) {
-        // Descomente abaixo se tiver PHPMailer instalado (composer require phpmailer/phpmailer)
-        /*
-        require_once __DIR__ . '/../vendor/autoload.php';
+        if (!SMTP_USER || !SMTP_PASS) {
+            error_log('SMTP não configurado: preencha SMTP_USER e SMTP_PASS no .env');
+            return false;
+        }
+        require_once __DIR__ . '/../vendor/PHPMailer/autoload.php';
         $mail = new PHPMailer\PHPMailer\PHPMailer(true);
         try {
             $mail->isSMTP();
@@ -231,6 +217,7 @@ function enviarCodigoEmail(string $email, string $nome, string $codigo): bool {
             $mail->Password   = SMTP_PASS;
             $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
             $mail->Port       = SMTP_PORT;
+            $mail->CharSet    = 'UTF-8';
             $mail->setFrom(SMTP_FROM, SMTP_NAME);
             $mail->addAddress($email, $nome);
             $mail->isHTML(true);
@@ -238,15 +225,14 @@ function enviarCodigoEmail(string $email, string $nome, string $codigo): bool {
             $mail->Body    = gerarHtmlCodigo($nome, $codigo);
             $mail->send();
             return true;
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             error_log('PHPMailer Error: ' . $mail->ErrorInfo);
             return false;
         }
-        */
-        return false;
     }
 
-    // mail() padrão do PHP
+    // mail() padrão do PHP — funciona apenas se o servidor tiver um MTA configurado.
+    // Recomendado deixar USAR_SMTP=true no .env para maior confiabilidade de entrega.
     $host     = $_SERVER['HTTP_HOST'] ?? 'seusite.com';
     $headers  = "MIME-Version: 1.0\r\n";
     $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
