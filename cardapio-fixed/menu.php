@@ -1976,6 +1976,7 @@ function buildProdData(array $p, array $opcoesPorProduto): array {
       .prod-img img {
         width: 100%;
         height: 100%;
+        object-fit: cover;
       }
 
       .content-search-wrap {
@@ -2578,6 +2579,8 @@ function buildProdData(array $p, array $opcoesPorProduto): array {
                           Pedido</span><?php endif; ?>
                       <?php if ($p['preco_original'] && (float) $p['preco_original'] > (float) $p['preco']): ?><span
                           class="prod-badge prod-badge-desc">Oferta</span><?php endif; ?>
+                      <?php if (!empty($opcoesPorProduto[$p['id']]['remover'])): ?><span
+                          class="prod-badge prod-badge-editavel">🔧 Personalizável</span><?php endif; ?>
                     </div>
                     <div class="prod-nome"><?= h($p['nome']) ?></div>
                     <?php if ($p['descricao']): ?>

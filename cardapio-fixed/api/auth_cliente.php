@@ -5,8 +5,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/rate_limit.php';
 rate_limit('auth_cliente', 15, 60);
 
-// Configurações de e-mail (MODO_DEBUG_EMAIL, USAR_SMTP, SMTP_*) vêm do .env,
-// carregadas centralmente em config/db.php. Veja .env.example para instruções.
+// Cadastro de cliente é direto, sem verificação por e-mail (login é por WhatsApp + senha).
 
 $action = $_POST['action'] ?? '';
 
@@ -33,8 +32,8 @@ if ($action === 'login') {
     echo json_encode(['ok' => true, 'nome' => $cliente['nome']]); exit;
 }
 
-// ── ENVIAR CÓDIGO (passo 1 do cadastro) ─────────────────────────
-if ($action === 'enviar_codigo') {
+// ── CADASTRO (direto, sem verificação por e-mail) ─────────────────
+if ($action === 'cadastro') {
     csrf_verify();
     $nome     = trim($_POST['nome'] ?? '');
     $whatsapp = preg_replace('/\D/', '', trim($_POST['whatsapp'] ?? ''));
@@ -43,9 +42,9 @@ if ($action === 'enviar_codigo') {
     $senha    = $_POST['senha'] ?? '';
     $confirma = $_POST['confirma'] ?? '';
 
-    if (!$nome || strlen($whatsapp) < 10 || !$email || !$senha)
-        { echo json_encode(['ok' => false, 'erro' => 'Preencha todos os campos.']); exit; }
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL))
+    if (!$nome || strlen($whatsapp) < 10 || !$senha)
+        { echo json_encode(['ok' => false, 'erro' => 'Preencha todos os campos obrigatórios.']); exit; }
+    if ($email && !filter_var($email, FILTER_VALIDATE_EMAIL))
         { echo json_encode(['ok' => false, 'erro' => 'E-mail inválido.']); exit; }
     if (strlen($senha) < 6)
         { echo json_encode(['ok' => false, 'erro' => 'Senha mínima de 6 caracteres.']); exit; }
@@ -56,79 +55,22 @@ if ($action === 'enviar_codigo') {
     $stmt->execute([$whatsapp]);
     if ($stmt->fetch()) { echo json_encode(['ok' => false, 'erro' => 'Este WhatsApp já tem uma conta. Faça login.']); exit; }
 
-    $stmt = $pdo->prepare("SELECT id FROM clientes WHERE email = ? LIMIT 1");
-    $stmt->execute([$email]);
-    if ($stmt->fetch()) { echo json_encode(['ok' => false, 'erro' => 'Este e-mail já está em uso. Faça login.']); exit; }
-
-    $codigo = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-    $_SESSION['cad_pendente'] = [
-        'nome'     => $nome,
-        'whatsapp' => $whatsapp,
-        'email'    => $email,
-        'endereco' => $endereco,
-        'senha'    => password_hash($senha, PASSWORD_BCRYPT),
-        'codigo'   => $codigo,
-        'expira'   => time() + 600,
-    ];
-
-    if (MODO_DEBUG_EMAIL) {
-        echo json_encode(['ok' => true, 'debug_codigo' => $codigo]); exit;
+    if ($email) {
+        $stmt = $pdo->prepare("SELECT id FROM clientes WHERE email = ? LIMIT 1");
+        $stmt->execute([$email]);
+        if ($stmt->fetch()) { echo json_encode(['ok' => false, 'erro' => 'Este e-mail já está em uso. Faça login.']); exit; }
     }
 
-    $enviado = enviarCodigoEmail($email, $nome, $codigo);
-    if (!$enviado) {
-        error_log("Falha ao enviar email de verificacao para: {$email}");
-        echo json_encode(['ok' => false, 'erro' => 'Não foi possível enviar o e-mail. Verifique as configurações de SMTP no .env.']); exit;
-    }
-    echo json_encode(['ok' => true]); exit;
-}
-
-// ── REENVIAR CÓDIGO ──────────────────────────────────────────────
-if ($action === 'reenviar_codigo') {
-    csrf_verify();
-    $pend = $_SESSION['cad_pendente'] ?? null;
-    if (!$pend) { echo json_encode(['ok' => false, 'erro' => 'Sessão expirada. Preencha o formulário novamente.']); exit; }
-
-    $codigo = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-    $_SESSION['cad_pendente']['codigo'] = $codigo;
-    $_SESSION['cad_pendente']['expira'] = time() + 600;
-
-    if (MODO_DEBUG_EMAIL) {
-        echo json_encode(['ok' => true, 'debug_codigo' => $codigo]); exit;
-    }
-    $enviado = enviarCodigoEmail($pend['email'], $pend['nome'], $codigo);
-    echo json_encode(['ok' => $enviado, 'erro' => $enviado ? null : 'Erro ao reenviar.']); exit;
-}
-
-// ── CADASTRO (confirmar código e criar conta) ────────────────────
-if ($action === 'cadastro') {
-    csrf_verify();
-    $codigo = trim($_POST['codigo'] ?? '');
-    $pend   = $_SESSION['cad_pendente'] ?? null;
-
-    if (!$pend) { echo json_encode(['ok' => false, 'erro' => 'Sessão expirada. Preencha o formulário novamente.']); exit; }
-    if (time() > $pend['expira']) {
-        unset($_SESSION['cad_pendente']);
-        echo json_encode(['ok' => false, 'erro' => 'Código expirado. Solicite um novo.']); exit;
-    }
-    if (!hash_equals($pend['codigo'], $codigo)) {
-        echo json_encode(['ok' => false, 'erro' => 'Código incorreto. Verifique e tente novamente.']); exit;
-    }
-
-    $stmt = $pdo->prepare("SELECT id FROM clientes WHERE whatsapp = ? LIMIT 1");
-    $stmt->execute([$pend['whatsapp']]);
-    if ($stmt->fetch()) { echo json_encode(['ok' => false, 'erro' => 'Este WhatsApp já tem uma conta.']); exit; }
-
-    $pdo->prepare("INSERT INTO clientes (nome, whatsapp, senha_hash, email, email_verificado, endereco) VALUES (?, ?, ?, ?, 1, ?)")
-        ->execute([$pend['nome'], $pend['whatsapp'], $pend['senha'], $pend['email'], $pend['endereco']]);
+    $hash = password_hash($senha, PASSWORD_BCRYPT);
+    $pdo->prepare("INSERT INTO clientes (nome, whatsapp, senha_hash, email, email_verificado, endereco) VALUES (?, ?, ?, ?, 0, ?)")
+        ->execute([$nome, $whatsapp, $hash, $email ?: null, $endereco]);
     $id = $pdo->lastInsertId();
-    unset($_SESSION['cad_pendente']);
 
     $_SESSION['cliente_id']       = $id;
-    $_SESSION['cliente_nome']     = $pend['nome'];
-    $_SESSION['cliente_whatsapp'] = $pend['whatsapp'];
-    $_SESSION['cliente_email']    = $pend['email'];
-    echo json_encode(['ok' => true, 'nome' => $pend['nome']]); exit;
+    $_SESSION['cliente_nome']     = $nome;
+    $_SESSION['cliente_whatsapp'] = $whatsapp;
+    $_SESSION['cliente_email']    = $email;
+    echo json_encode(['ok' => true, 'nome' => $nome]); exit;
 }
 
 // ── ATUALIZAR PERFIL ─────────────────────────────────────────────
@@ -199,55 +141,3 @@ if ($action === 'logout') {
 }
 
 echo json_encode(['ok' => false, 'erro' => 'Ação inválida.']);
-
-// ── Helper: enviar e-mail ────────────────────────────────────────
-function enviarCodigoEmail(string $email, string $nome, string $codigo): bool {
-    if (USAR_SMTP) {
-        if (!SMTP_USER || !SMTP_PASS) {
-            error_log('SMTP não configurado: preencha SMTP_USER e SMTP_PASS no .env');
-            return false;
-        }
-        require_once __DIR__ . '/../vendor/PHPMailer/autoload.php';
-        $mail = new PHPMailer\PHPMailer\PHPMailer(true);
-        try {
-            $mail->isSMTP();
-            $mail->Host       = SMTP_HOST;
-            $mail->SMTPAuth   = true;
-            $mail->Username   = SMTP_USER;
-            $mail->Password   = SMTP_PASS;
-            $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
-            $mail->Port       = SMTP_PORT;
-            $mail->CharSet    = 'UTF-8';
-            $mail->setFrom(SMTP_FROM, SMTP_NAME);
-            $mail->addAddress($email, $nome);
-            $mail->isHTML(true);
-            $mail->Subject = 'Seu código de verificação';
-            $mail->Body    = gerarHtmlCodigo($nome, $codigo);
-            $mail->send();
-            return true;
-        } catch (\Exception $e) {
-            error_log('PHPMailer Error: ' . $mail->ErrorInfo);
-            return false;
-        }
-    }
-
-    // mail() padrão do PHP — funciona apenas se o servidor tiver um MTA configurado.
-    // Recomendado deixar USAR_SMTP=true no .env para maior confiabilidade de entrega.
-    $host     = $_SERVER['HTTP_HOST'] ?? 'seusite.com';
-    $headers  = "MIME-Version: 1.0\r\n";
-    $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
-    $headers .= "From: noreply@{$host}\r\n";
-    return @mail($email, 'Seu código de verificação', gerarHtmlCodigo($nome, $codigo), $headers);
-}
-
-function gerarHtmlCodigo(string $nome, string $codigo): string {
-    return '<!DOCTYPE html><html><body style="font-family:sans-serif;background:#f5f5f5;padding:20px;">
-<div style="max-width:420px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;">
-  <h2 style="margin:0 0 8px;color:#111;">Verificação de e-mail</h2>
-  <p style="color:#666;margin:0 0 24px;">Olá, <strong>' . htmlspecialchars($nome) . '</strong>! Use o código abaixo para criar sua conta:</p>
-  <div style="text-align:center;background:#f9f9f9;border:2px dashed #ddd;border-radius:10px;padding:24px;margin-bottom:24px;">
-    <span style="font-size:40px;font-weight:900;letter-spacing:12px;color:#111;">' . $codigo . '</span>
-  </div>
-  <p style="color:#999;font-size:13px;">Este código expira em <strong>10 minutos</strong>.</p>
-</div></body></html>';
-}

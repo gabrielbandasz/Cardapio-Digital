@@ -36,24 +36,6 @@ if (!APP_DEBUG) {
 // ADMIN_SALT — mantido para compatibilidade com admins existentes
 define('ADMIN_SALT', $_ENV['ADMIN_SALT'] ?? 'cef8002e3dbd3c63acd250b28b580e249601bf462f6139576');
 
-// ══════════════════════════════════════════════════════════════
-// E-MAIL (verificação de cadastro de clientes)
-// ══════════════════════════════════════════════════════════════
-// MODO_DEBUG_EMAIL: só ative como true em ambiente LOCAL para testar sem
-// enviar e-mail de verdade (o código volta na resposta da API).
-// Em produção isso é sempre 'false' por padrão, mesmo que o .env não exista.
-define('MODO_DEBUG_EMAIL', filter_var($_ENV['MODO_DEBUG_EMAIL'] ?? 'false', FILTER_VALIDATE_BOOLEAN));
-
-// USAR_SMTP: true envia via SMTP (Gmail, SendGrid, etc) usando PHPMailer (já incluso em /vendor).
-// false usa a função mail() nativa do PHP (funciona em pouquíssimos hosts sem configuração extra).
-define('USAR_SMTP', filter_var($_ENV['USAR_SMTP'] ?? 'true', FILTER_VALIDATE_BOOLEAN));
-define('SMTP_HOST', $_ENV['SMTP_HOST'] ?? 'smtp.gmail.com');
-define('SMTP_PORT', (int)($_ENV['SMTP_PORT'] ?? 587));
-define('SMTP_USER', $_ENV['SMTP_USER'] ?? '');
-define('SMTP_PASS', $_ENV['SMTP_PASS'] ?? '');
-define('SMTP_FROM', $_ENV['SMTP_FROM'] ?? ($_ENV['SMTP_USER'] ?? ''));
-define('SMTP_NAME', $_ENV['SMTP_NAME'] ?? 'Cardápio Digital');
-
 try {
     $pdo = new PDO(
         'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4',

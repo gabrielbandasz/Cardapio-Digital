@@ -91,7 +91,7 @@ $redir  = $_GET['redir'] ?? 'menu.php';
       </div>
 
       <div class="field">
-        <label><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>E-mail (para verificação)</label>
+        <label><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>E-mail (opcional)</label>
         <input type="email" id="email" placeholder="seu@email.com" autocomplete="email">
         <div class="hint" id="emailHint"></div>
       </div>
@@ -127,53 +127,14 @@ $redir  = $_GET['redir'] ?? 'menu.php';
         <div class="hint" id="confirmaHint"></div>
       </div>
 
-      <button class="btn-auth" id="btnEnviarCodigo" onclick="enviarCodigo()">
-        <div class="spinner" id="spin1"></div>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-        <span id="btnCodTxt">Enviar código de verificação</span>
-      </button>
-
-      <div class="auth-footer">
-        Já tem conta? <a href="login_cliente.php<?= $redir !== 'menu.php' ? '?redir='.urlencode($redir) : '' ?>">Fazer login</a>
-      </div>
-    </div>
-
-    <!-- PASSO 2: Verificação do código -->
-    <div class="step" id="step2">
-      <button class="step-back" onclick="goStep(1)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-        Voltar
-      </button>
-
-      <div class="auth-title">Verificar e-mail</div>
-
-      <div class="verificacao-info">
-        <strong>Código enviado!</strong>
-        Enviamos um código de 6 dígitos para<br>
-        <strong id="emailDestino" style="color:var(--primary)"></strong><br>
-        <small>Verifique também a caixa de spam.</small>
-      </div>
-
-      <!-- Aviso amarelo do modo debug (some em produção) -->
-      <div class="aviso-debug" id="avisoDebug"></div>
-
-      <div class="auth-erro" id="erro2"></div>
-      <div class="auth-ok"   id="ok2"></div>
-
-      <div class="field">
-        <label><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Código de verificação</label>
-        <input type="text" id="codigoEmail" class="codigo-input" placeholder="000000" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
-      </div>
-
       <button class="btn-auth" id="btnCriarConta" onclick="criarConta()">
-        <div class="spinner" id="spin2"></div>
+        <div class="spinner" id="spin1"></div>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
         <span id="btnCriarTxt">Criar conta</span>
       </button>
 
-      <div class="reenviar">
-        <span id="reenviarTxt">Não recebeu? </span>
-        <button id="btnReenviar" onclick="reenviarCodigo()">Reenviar código</button>
+      <div class="auth-footer">
+        Já tem conta? <a href="login_cliente.php<?= $redir !== 'menu.php' ? '?redir='.urlencode($redir) : '' ?>">Fazer login</a>
       </div>
     </div>
 
@@ -247,25 +208,7 @@ function goStep(n) {
   document.getElementById('step' + n).classList.add('active');
 }
 
-let contadorReenviar = 0;
-
-function iniciarContador() {
-  contadorReenviar = 60;
-  const btn = document.getElementById('btnReenviar');
-  const txt = document.getElementById('reenviarTxt');
-  btn.disabled = true;
-  const iv = setInterval(() => {
-    contadorReenviar--;
-    txt.textContent = 'Reenviar em ' + contadorReenviar + 's. ';
-    if (contadorReenviar <= 0) {
-      clearInterval(iv);
-      txt.textContent = 'Não recebeu? ';
-      btn.disabled = false;
-    }
-  }, 1000);
-}
-
-async function enviarCodigo() {
+async function criarConta() {
   document.getElementById('erro1').style.display = 'none';
   const nome     = document.getElementById('nome').value.trim();
   const whatsapp = document.getElementById('whatsapp').value;
@@ -276,17 +219,17 @@ async function enviarCodigo() {
 
   if (!nome)     { showErro('erro1','Informe seu nome.'); return; }
   if (whatsapp.replace(/\D/g,'').length < 11) { showErro('erro1','WhatsApp inválido.'); return; }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showErro('erro1','Informe um e-mail válido.'); return; }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showErro('erro1','E-mail inválido.'); return; }
   if (senha.length < 6) { showErro('erro1','Senha muito curta (mínimo 6 caracteres).'); return; }
   if (senha !== confirma) { showErro('erro1','As senhas não coincidem.'); return; }
 
-  const btn = document.getElementById('btnEnviarCodigo');
+  const btn = document.getElementById('btnCriarConta');
   const spin = document.getElementById('spin1');
-  const txt = document.getElementById('btnCodTxt');
-  btn.disabled = true; spin.style.display = 'block'; txt.textContent = 'Enviando...';
+  const txt = document.getElementById('btnCriarTxt');
+  btn.disabled = true; spin.style.display = 'block'; txt.textContent = 'Criando conta...';
 
   const fd = new FormData();
-  fd.append('action','enviar_codigo'); fd.append('csrf_token',CSRF);
+  fd.append('action','cadastro'); fd.append('csrf_token',CSRF);
   fd.append('nome',nome); fd.append('whatsapp',whatsapp);
   fd.append('email',email); fd.append('endereco',endereco);
   fd.append('senha',senha); fd.append('confirma',confirma);
@@ -295,72 +238,14 @@ async function enviarCodigo() {
     const r = await fetch('api/auth_cliente.php', { method:'POST', body:fd });
     const d = await r.json();
     if (d.ok) {
-      document.getElementById('emailDestino').textContent = email;
-      goStep(2);
-      iniciarContador();
-      if (d.debug_codigo) {
-        document.getElementById('codigoEmail').value = d.debug_codigo;
-        const aviso = document.getElementById('avisoDebug');
-        aviso.textContent = '⚙️ Modo teste ativo — código: ' + d.debug_codigo;
-        aviso.style.display = 'block';
-      }
-    } else {
-      showErro('erro1', d.erro || 'Erro ao enviar código.');
-    }
-  } catch { showErro('erro1','Erro de conexão. Tente novamente.'); }
-
-  btn.disabled = false; spin.style.display = 'none'; txt.textContent = 'Enviar código de verificação';
-}
-
-async function reenviarCodigo() {
-  document.getElementById('btnReenviar').disabled = true;
-  const fd = new FormData();
-  fd.append('action','reenviar_codigo'); fd.append('csrf_token',CSRF);
-  try {
-    const r = await fetch('api/auth_cliente.php', { method:'POST', body:fd });
-    const d = await r.json();
-    if (d.ok) {
-      iniciarContador();
-      if (d.debug_codigo) {
-        document.getElementById('codigoEmail').value = d.debug_codigo;
-        const aviso = document.getElementById('avisoDebug');
-        aviso.textContent = '⚙️ Modo teste ativo — código: ' + d.debug_codigo;
-        aviso.style.display = 'block';
-      }
-    } else { alert(d.erro || 'Erro ao reenviar.'); }
-  } catch { alert('Erro de conexão.'); }
-}
-
-async function criarConta() {
-  document.getElementById('erro2').style.display = 'none';
-  document.getElementById('ok2').style.display   = 'none';
-  const codigo = document.getElementById('codigoEmail').value.trim();
-  if (codigo.length !== 6) { showErro('erro2','Digite o código de 6 dígitos.'); return; }
-
-  const btn = document.getElementById('btnCriarConta');
-  const spin = document.getElementById('spin2');
-  const txt = document.getElementById('btnCriarTxt');
-  btn.disabled = true; spin.style.display = 'block'; txt.textContent = 'Criando conta...';
-
-  const fd = new FormData();
-  fd.append('action','cadastro'); fd.append('csrf_token',CSRF);
-  fd.append('codigo',codigo);
-
-  try {
-    const r = await fetch('api/auth_cliente.php', { method:'POST', body:fd });
-    const d = await r.json();
-    if (d.ok) {
       localStorage.setItem('clienteNome', d.nome);
-      const ok = document.getElementById('ok2');
-      ok.textContent = 'Conta criada! Bem-vindo, ' + d.nome + '! Redirecionando...';
-      ok.style.display = 'block';
-      setTimeout(() => window.location.href = REDIR, 1500);
+      window.location.href = REDIR;
     } else {
-      showErro('erro2', d.erro || 'Erro ao criar conta.');
+      showErro('erro1', d.erro || 'Erro ao criar conta.');
       btn.disabled = false; spin.style.display = 'none'; txt.textContent = 'Criar conta';
     }
   } catch {
-    showErro('erro2','Erro de conexão. Tente novamente.');
+    showErro('erro1','Erro de conexão. Tente novamente.');
     btn.disabled = false; spin.style.display = 'none'; txt.textContent = 'Criar conta';
   }
 }
